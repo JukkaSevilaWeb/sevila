@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="sv">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Analog klocka</title>
+    <style>
+        :root{
+            /* MÖRKT TEMA (standard) */
+            --bg:#0f1724;
+            --face:#0b1220;
+            --mark:#94a3b8;
+            --hand-hour:#e6eef8;
+            --hand-minute:#cfe6ff;
+            --hand-second:#ff6b6b;
+            --glass:rgba(255,255,255,0.03);
+            --shadow-external:0 25px 50px rgba(0,0,0,1);
+            --shadow-internal-light:inset 0 10px 30px rgba(255,255,255,0.08);
+            --shadow-internal-dark:inset 0 -10px 30px rgba(0,0,0,0.5);
+            
+            /* Temaberoende färger för fönster och bakgrund */
+            --window-bg:var(--bg);
+            --window-border:rgba(255,255,255,0.1); 
+            --main-bg-end:#071023; /* Mörk slutpunkt */
+            
+            /* KRITISK FÖR MÅNFAS: Den färg som döljer månen */
+            --moon-shadow-color:var(--face);
+        }
+        
+        /* NYTT: LJUS LÄGE DEFINITION */
+        body.light-mode {
+            --bg:#f0f4f8; 
+            --face:#ffffff; 
+            --mark:#64748b; 
+            --hand-hour:#334155; 
+            --hand-minute:#475569;
+            --hand-second:#ff6b6b; 
+            --glass:rgba(0,0,0,0.03); 
+            --shadow-external:0 15px 30px rgba(0,0,0,0.2); 
+            --shadow-internal-light:inset 0 10px 30px rgba(255,255,255,0.8); 
+            --shadow-internal-dark:inset 0 -10px 30px rgba(0,0,0,0.1); 
+            
+            /* Temaberoende färger för fönster och bakgrund */
+            --window-bg:var(--face); /* Använder urtavlans färg */
+            --window-border:rgba(0,0,0,0.1); 
+            --main-bg-end:#e3e9f0; /* Ljus slutpunkt */
+            
+            /* KRITISK FÖR MÅNFAS: Den färg som döljer månen */
+            --moon-shadow-color:var(--face);
+        }
+
+        *{box-sizing:border-box}
+        html,body{
+            height:100%;
+            margin:0;
+            font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+            color:var(--hand-minute);
+            /* Säkrare gradient med temaberoende slutpunkt */
+            background:linear-gradient(180deg,var(--bg) 0%, var(--main-bg-end) 100%);
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            transition: background 0.5s ease; 
+        }
+
+        .wrap{display:grid;gap:24px;place-items:center;padding:28px}
+
+        .clock{
+            width:360px;height:360px;
+            border-radius:50%;
+            background:radial-gradient(circle at 35% 25%, var(--glass), transparent 25%), var(--face);
+            box-shadow:
+                var(--shadow-external),   
+                var(--shadow-internal-light), 
+                var(--shadow-internal-dark);     
+            position:relative;
+            display:grid;
+            place-items:center;
+        }
+
+        /* glass reflection */
+        .clock::before{
+            content:"";
+            position:absolute;
+            inset:0;
+            border-radius:50%;
+            background:linear-gradient(135deg, var(--glass) 0%, transparent 20%);
+            pointer-events:none
+        }
+
+        .dial{position:relative;width:88%;height:88%;border-radius:50%;display:block}
+
+        /* Fönster för datum/dag/år */
+        .date-window, .day-window, .year-window { 
+            position:absolute;
+            background:var(--window-bg); 
+            color:var(--hand-hour);
+            border:1px solid var(--window-border); 
+            border-radius:3px;
+            font-size:12px; 
+            font-variant-numeric:tabular-nums;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            left:50%;
+            top:50%;
+            z-index: 2; 
+            text-align: center; 
+            padding: 2px 4px; 
+        }
+        
+        .date-window{
+            /* JUSTERAD STORLEK OCH POSITION */
+            width:32px; 
+            height:20px; 
+            transform:translate(52px, -50%); 
+        }
+
+        .day-window{
+            /* JUSTERAD STORLEK OCH POSITION */
+            width:32px; 
+            height:20px; 
+            transform:translate(-88px, -50%); 
+        }
+        
+        /* ÅRTALSFÖNSTRET (MELLAN KL. 6 OCH CENTRUM) */
+        .year-window{
+            /* JUSTERAD STORLEK */
+            width:46px; 
+            height:20px; 
+            bottom: 37.5%; 
+            left: 50%;
+            top: unset; 
+            transform: translate(-50%, 50%); 
+        }
+
+        /* ZONFÖNSTRET (UTAN RAM OCH BAKGRUND) */
+        .zone-display {
+            position:absolute; 
+            background: none; 
+            border: none; 
+            
+            width: 70px; 
+            height: 18px; 
+            bottom: 29%; 
+            left: 50%;
+            top: unset;
+            transform: translate(-50%, 50%);
+            font-size: 10px; 
+            font-weight: bold;
+            letter-spacing: 0.5px;
+            color: var(--hand-second); 
+            z-index: 2; 
+            display:flex; 
+            align-items:center;
+            justify-content:center;
+        }
+
+        /* MÅNFASFÖNSTRET (NU STÖRRE) */
+        .moon-window {
+            position: absolute;
+            width: 36px; 
+            height: 36px; 
+            border-radius: 50%;
+            background: var(--window-bg); 
+            border: 2px solid var(--mark);
+            left: 50%;
+            top: calc(37.5% - 15px - 3px); 
+            transform: translate(-50%, -50%);
+            overflow: hidden; 
+            z-index: 2;
+            box-shadow: 
+                inset 0 2px 4px rgba(0,0,0,0.5), 
+                0 1px 3px rgba(0,0,0,0.5);       
+        }
+        
+        /* SJÄLVA MÅNEN */
+        .moon-disk {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-color: #f6e0b5; 
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.4); 
+            transition: none; 
+            transform-origin: center center;
+        }
+        
+        /* Justera fönsterskuggor i ljust läge */
+        body.light-mode .moon-window,
+        body.light-mode .date-window, 
+        body.light-mode .day-window,
+        body.light-mode .year-window { 
+            box-shadow: 
+                inset 0 2px 4px rgba(0,0,0,0.2),
+                0 1px 3px rgba(0,0,0,0.2); 
+        }
+        
+        /* MARKERINGAR OCH SIFFROR */
+        .mark{
+            position:absolute;
+            left:0; top:0;
+            width:100%; height:100%;
+            transform-origin:50% 50%; 
+        } 
+        
+        .mark .tick{
+            position:absolute;
+            left:50%;
+            top:3%;
+            width:3px; 
+            height:12px; 
+            background:var(--mark);
+            transform:translateX(-50%);
+            border-radius:1px
+        }
+
+        .mark .min-tick{
+            position:absolute;
+            left:50%;
+            top:3%;
+            width:1px; 
+            height:8px; 
+            background:var(--mark);
+            opacity: 0.6; 
+            transform:translateX(-50%);
+            border-radius:0.5px;
+        }
+        
+        .mark .num{
+            position:absolute;
+            left:50%;
+            top:12%; 
+            font-size:18px; 
+            color:var(--mark);
+            user-select:none;
+            text-align:center;
+            margin-left: -8px; 
+            width: 16px;
+            text-shadow: 
+                -1px -1px 2px rgba(255,255,255,0.15), 
+                1px 1px 3px rgba(0,0,0,0.8);          
+        }
+        
+        .hand{
+            position:absolute;
+            left:50%;top:50%;
+            transform-origin:50% 100%; 
+            transition: none; 
+            transform:translate(-50%, -100%) rotate(0deg); 
+            border-radius:44px
+        }
+        
+        .hand.hour{
+            width:8px;height:90px;
+            background:linear-gradient(180deg,var(--hand-hour),rgba(255,255,255,0.03));
+            z-index:3;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.8); 
+        }
+        .hand.minute{
+            width:6px;height:125px;
+            background:linear-gradient(180deg,var(--hand-minute),rgba(255,255,255,0.03));
+            z-index:4;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.8); 
+        }
+        .hand.second{
+            width:2px;height:150px;
+            background:var(--hand-second);
+            z-index:5;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.7); 
+        }
+
+        .pin{
+            position:absolute;width:14px;height:14px;
+            border-radius:50%;background:var(--hand-minute);
+            left:50%;top:50%;
+            transform:translate(-50%,-50%);
+            box-shadow:
+                0 5px 15px rgba(0,0,0,1),     
+                inset 0 2px 4px rgba(255,255,255,0.4); 
+        }
+
+        .controls{
+            display:flex;
+            gap:12px;
+            align-items:center;
+            flex-wrap: wrap; 
+            justify-content: center;
+        }
+        .digital{font-variant-numeric:tabular-nums;background:rgba(255,255,255,0.03);padding:8px 12px;border-radius:8px;color:var(--hand-minute)}
+        .btn{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:8px 10px;border-radius:8px;color:var(--mark);cursor:pointer}
+        .btn:active{transform:translateY(1px)}
+        
+        body.light-mode .btn {
+            border-color: rgba(0,0,0,0.1); 
+        }
+
+        /* Justera layout för mobila enheter */
+        @media (max-width:420px){
+            .clock{width:280px;height:280px}
+            .hand.minute{height:98px}
+            .hand.hour{height:72px}
+            .hand.second{height:118px}
+            .controls {
+                flex-direction: column; 
+                gap: 8px;
+            }
+            .digital {
+                order: -1; 
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="wrap" role="main">
+        <section class="clock" aria-label="Analog klocka">
+            <div class="dial" id="dial">
+                <div class="date-window" id="date-window">--</div>
+                
+                <div class="day-window" id="day-window">--</div>
+
+                <div class="year-window" id="year-window">----</div>
+                
+                <div class="zone-display" id="zone-display">Sthlm</div> 
+
+                <div class="moon-window" id="moon-window">
+                    <div class="moon-disk" id="moon-disk"></div>
+                </div>
+                
+                <div class="hand hour" id="hour"></div>
+                <div class="hand minute" id="minute"></div>
+                <div class="hand second" id="second"></div>
+                <div class="pin" aria-hidden="true"></div>
+            </div>
+        </section>
+
+        <div class="controls" aria-hidden="false">
+            <div class="digital" id="digital" aria-live="polite">--:--:--</div>
+            <button class="btn" id="toggleZone">Zon: Sthlm</button> 
+            <button class="btn" id="toggleFormat">Format: Romerska</button>
+            <button class="btn" id="toggleSec">Dölj sekundvisare</button>
+            <button class="btn" id="toggleTheme">Tema: Ljust</button>
+        </div>
+    </main>
+
+    <script>
+        const dial = document.getElementById('dial');
+        const hourHand = document.getElementById('hour');
+        const minuteHand = document.getElementById('minute');
+        const secondHand = document.getElementById('second');
+        const digital = document.getElementById('digital');
+        const toggleSec = document.getElementById('toggleSec');
+        const toggleFormat = document.getElementById('toggleFormat'); 
+        const toggleTheme = document.getElementById('toggleTheme'); 
+        const toggleZone = document.getElementById('toggleZone'); 
+        const dateWindow = document.getElementById('date-window'); 
+        const dayWindow = document.getElementById('day-window'); 
+        const yearWindow = document.getElementById('year-window');
+        const zoneDisplay = document.getElementById('zone-display'); 
+        const body = document.body;
+        const moonDisk = document.getElementById('moon-disk'); 
+
+        let useRoman = true; 
+        let showSecond = true;
+
+        const romanNumerals = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+        const WEEKDAYS_SV = ["Sön", "Mån", "Tis", "Ons", "Tor", "Fre", "Lör"]; 
+        
+        // UPPDATERAD: Tidszonkonfiguration med 6 zoner (med sommartid)
+        const timeZones = [
+            { name: "Stockholm", abbr: "Sthlm", offset: 120 },   // UTC+2
+            { name: "London", abbr: "LDN", offset: 60 },        // UTC+1
+            { name: "New York", abbr: "NYC", offset: -240 },    // UTC-4
+            { name: "Tokyo", abbr: "TYO", offset: 540 },        // UTC+9
+            { name: "Dubai", abbr: "DXB", offset: 240 },        // UTC+4
+            { name: "Los Angeles", abbr: "LAX", offset: -420 }  // UTC-7
+        ];
+        // Startar på Index 0 (Stockholm)
+        let currentZoneIndex = 0; 
+        
+        // Ritar om alla markeringar (timmar och minuter)
+        function createDialMarks(isRoman) {
+            const oldMarks = dial.querySelectorAll('.mark');
+            oldMarks.forEach(mark => mark.remove());
+
+            for(let i = 1; i <= 60; i++) {
+                const rotationAngle = i * 6;
+                
+                const wrapper = document.createElement('div');
+                wrapper.className = 'mark';
+                wrapper.style.transform = `rotate(${rotationAngle}deg)`;
+                
+                if (i % 5 === 0) {
+                    const tick = document.createElement('div');
+                    tick.className = 'tick'; 
+
+                    const num = document.createElement('div');
+                    num.className = 'num';
+                    
+                    let hour = (i / 5);
+                    if (hour === 0) hour = 12; 
+                    
+                    const numeralIndex = hour === 12 ? 11 : hour - 1; 
+                    
+                    num.textContent = isRoman ? romanNumerals[numeralIndex] : hour;
+                    num.style.transform = `rotate(${-(rotationAngle)}deg)`; 
+
+                    wrapper.appendChild(tick);
+                    wrapper.appendChild(num);
+
+                } else {
+                    const minTick = document.createElement('div');
+                    minTick.className = 'min-tick'; 
+                    wrapper.appendChild(minTick);
+                }
+                
+                dial.appendChild(wrapper);
+            }
+        }
+        
+        // FUNKTION: Beräknar och ritar månfasen
+        function updateMoonPhase() {
+            const now = new Date();
+            
+            const MS_PER_DAY = 86400000;
+            const LUNAR_EPOCH_MS = 946684800000; 
+            
+            const daysSinceEpoch = (now.getTime() - LUNAR_EPOCH_MS) / MS_PER_DAY;
+            
+            const LUNAR_CYCLE = 29.5305882;
+            
+            let currentPhaseDay = daysSinceEpoch % LUNAR_CYCLE;
+            
+            let normalizedPhase = (currentPhaseDay + LUNAR_CYCLE) % LUNAR_CYCLE; 
+            normalizedPhase /= LUNAR_CYCLE;
+
+            let gradientColor = getComputedStyle(document.documentElement).getPropertyValue('--moon-shadow-color').trim(); 
+            
+            let diskRotation = 0;
+            let firstGradient = ''; 
+            let secondGradient = ''; 
+
+            if (normalizedPhase <= 0.5) { 
+                diskRotation = 0; 
+                let shadowStart = Math.min(100, (normalizedPhase * 2) * 100); 
+                firstGradient = `linear-gradient(to right, ${gradientColor} 50%, transparent 50%)`;
+                secondGradient = `linear-gradient(to left, ${gradientColor} ${100 - shadowStart}%, transparent ${100 - shadowStart}%)`;
+
+            } else { 
+                diskRotation = 180; 
+                let shadowStart = Math.min(100, ((normalizedPhase - 0.5) * 2) * 100); 
+                firstGradient = `linear-gradient(to right, transparent 50%, ${gradientColor} 50%)`;
+                secondGradient = `linear-gradient(to right, ${gradientColor} ${100 - shadowStart}%, transparent ${100 - shadowStart}%)`;
+            }
+            
+            moonDisk.style.backgroundImage = 
+                `${firstGradient}, ${secondGradient}`;
+
+            moonDisk.style.transform = `rotate(${diskRotation}deg)`;
+        }
+
+        // FUNKTION: Växlar tidszon
+        toggleZone.addEventListener('click', () => {
+            currentZoneIndex = (currentZoneIndex + 1) % timeZones.length;
+            const newZone = timeZones[currentZoneIndex];
+            toggleZone.textContent = `Zon: ${newZone.abbr}`; 
+        });
+
+        // Övriga händelsehanterare
+        toggleFormat.addEventListener('click', () => {
+            useRoman = !useRoman;
+            createDialMarks(useRoman);
+            toggleFormat.textContent = useRoman ? 'Format: Romerska' : 'Format: Arabiska';
+        });
+
+        toggleSec.addEventListener('click', ()=>{
+            showSecond = !showSecond;
+            secondHand.style.display = showSecond ? 'block' : 'none';
+            toggleSec.textContent = showSecond ? 'Dölj sekundvisare' : 'Visa sekundvisare';
+        });
+        
+        toggleTheme.addEventListener('click', () => {
+            body.classList.toggle('light-mode'); 
+            
+            if (body.classList.contains('light-mode')) {
+                toggleTheme.textContent = 'Tema: Mörkt';
+            } else {
+                toggleTheme.textContent = 'Tema: Ljust';
+            }
+            updateMoonPhase(); 
+        });
+
+        // Huvuduppdateringsfunktionen
+        function updateClock(){
+            let now = new Date();
+            let targetDate = now;
+            const zone = timeZones[currentZoneIndex];
+
+            // Beräkna tidszonjustering baserat på offset
+            // 1. Hämta UTC-tid
+            const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+            
+            // 2. Skapa ett nytt datumobjekt med tidszonjustering
+            targetDate = new Date(utc + (zone.offset * 60000));
+            
+            // Variabler baserade på DEN VALDA TIDEN
+            const h = targetDate.getHours();
+            const m = targetDate.getMinutes();
+            const s = targetDate.getSeconds();
+            const ms = targetDate.getMilliseconds();
+            
+            // Beräkna vinklar (Svepande rörelse)
+            const secondAngle = (s + ms/1000) * 6;
+            const minuteAngle = (m + s/60 + ms/60000) * 6;
+            const hourAngle = (h%12 + m/60 + s/3600) * 30;
+
+            hourHand.style.transform = `translate(-50%,-100%) rotate(${hourAngle}deg)`;
+            minuteHand.style.transform = `translate(-50%,-100%) rotate(${minuteAngle}deg)`;
+            secondHand.style.transform = `translate(-50%,-100%) rotate(${secondAngle}deg)`;
+
+            const pad = n => String(n).padStart(2,'0');
+            digital.textContent = `${pad(h)}:${pad(m)}:${pad(s)} (${zone.abbr})`;
+
+            // Uppdatera fönstren
+            dateWindow.textContent = String(targetDate.getDate()).padStart(2, '0');
+            dayWindow.textContent = WEEKDAYS_SV[targetDate.getDay()]; 
+            yearWindow.textContent = targetDate.getFullYear(); 
+            zoneDisplay.textContent = zone.abbr; 
+            
+            updateMoonPhase(); 
+        }
+
+        function tickLoop(){
+            updateClock();
+            requestAnimationFrame(tickLoop);
+        }
+
+        function initClock() {
+            // Initialiserar knappar och displayer med startzonen
+            const startZone = timeZones[currentZoneIndex];
+            toggleZone.textContent = `Zon: ${startZone.abbr}`;
+            zoneDisplay.textContent = startZone.abbr;
+            digital.textContent = `--:--:-- (${startZone.abbr})`;
+            
+            createDialMarks(useRoman);
+            tickLoop();
+        }
+
+        initClock();
+
+        const clock = document.querySelector('.clock');
+        clock.tabIndex = 0;
+        clock.addEventListener('focus', ()=>{ clock.style.outline = '2px solid rgba(255,255,255,0.06)'; });
+        clock.addEventListener('blur', ()=>{ clock.style.outline = 'none'; });
+    </script>
+</body>
+</html>
